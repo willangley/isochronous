@@ -540,7 +540,9 @@ WVTEST_MAIN("Send and receive on sockets") {
   fd_set rfds;
   FD_ZERO(&rfds);
   FD_SET(ssock, &rfds);
-  struct timeval tv = {0, 0};
+  // A small nonzero timeout, rather than a zero-timeout poll, because
+  // loopback UDP delivery on macOS isn't synchronous with sendto().
+  struct timeval tv = {0, 20000};
   int nfds = select(ssock + 1, &rfds, NULL, NULL, &tv);
   WVPASSEQ(nfds, 1);
 
@@ -978,7 +980,9 @@ WVTEST_MAIN("sending packets when time rolls over 32 bits") {
   FD_ZERO(&rfds);
   FD_SET(csock, &rfds);
   FD_SET(c2sock, &rfds);
-  struct timeval tv = {0, 0};
+  // A small nonzero timeout, rather than a zero-timeout poll, because
+  // loopback UDP delivery on macOS isn't synchronous with sendto().
+  struct timeval tv = {0, 20000};
   int nfds = select(std::max(csock, c2sock) + 1, &rfds, NULL, NULL, &tv);
   WVPASSEQ(nfds, 0);
 
