@@ -16,6 +16,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <memory.h>
 #include <stdio.h>
@@ -36,8 +37,9 @@ uint32_t send_next_ack_packet(Session *from, uint64_t from_base, Session *to,
   t += latency;
   handle_ack_packet(to, to_base + t);
   fprintf(stderr,
-          "**Sent packet: txtime=%ld, start_txtime=%d, rxtime=%lu, "
-          "start_rxtime=%lu, latency=%d, t_from=%lu, t_to=%lu\n",
+          "**Sent packet: txtime=%" PRIu64 ", start_txtime=%d, "
+          "rxtime=%" PRIu64 ", start_rxtime=%" PRIu64 ", latency=%d, "
+          "t_from=%" PRIu64 ", t_to=%" PRIu64 "\n",
           from->next_send,
           to->start_rtxtime,
           to_base + t,
@@ -965,13 +967,13 @@ WVTEST_MAIN("sending packets when time rolls over 32 bits") {
 
   Session &sSession = s.session_map.begin()->second;
   t += usec_per_pkt;
-  printf("Finishing handshake: next_send_time=%lu (0x%lx)\n",
+  printf("Finishing handshake: next_send_time=%" PRIu64 " (0x%" PRIx64 ")\n",
          s.next_send_time(), s.next_send_time());
   printf("last_rxtime: %d\n", sSession.last_rxtime);
   printf("min_cycle_rxdiff: %d\n", sSession.min_cycle_rxdiff);
   WVPASS(s.next_send_time() < wrap);
   WVPASS(!send_waiting_packets(&s, ssock, sbase + t, is_server));
-  printf("Finished handshake, next_send_time=%lu (0x%lx)\n",
+  printf("Finished handshake, next_send_time=%" PRIu64 " (0x%" PRIx64 ")\n",
          s.next_send_time(), s.next_send_time());
   // The fast client still needs to send before we wrap.
   WVPASS(s.next_send_time() < wrap);
