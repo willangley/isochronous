@@ -701,12 +701,17 @@ WVTEST_MAIN("Send and receive on sockets") {
   WVPASS(!send_waiting_packets(&c, csock, cbase + t, is_client));
   WVPASS(!read_incoming_packet(&s, ssock, sbase + t, is_server));
 
+  // The old sSession reference dangles: the server erased that session's
+  // map entry when the client timed out, and read_incoming_packet() above
+  // inserted a new entry for the reconnected client.
+  Session &sSession2 = s.session_map.begin()->second;
+
   WVPASSEQ(s.session_map.size(), 1);
   WVPASSEQ(s.next_sends.size(), 1);
   WVPASSEQ(s.next_send_time(), sbase + t + 10 * 1000);
-  WVPASSEQ(cSession.next_tx_id, sSession.next_rx_id);
+  WVPASSEQ(cSession.next_tx_id, sSession2.next_rx_id);
   WVPASSEQ(cSession.next_rx_id, 0);
-  WVPASSEQ(sSession.next_tx_id, 1);
+  WVPASSEQ(sSession2.next_tx_id, 1);
 
   // Cleanup
   close(ssock);
