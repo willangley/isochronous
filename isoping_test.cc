@@ -79,7 +79,7 @@ int create_client_socket(struct sockaddr_storage *listenaddr,
 // to the given address, and *csock is connected to it.  Returns true on
 // success.
 bool create_local_socketpair(struct sockaddr_storage *listenaddr,
-                             socklen_t listenaddr_len, int *csock, int *ssock,
+                             socklen_t *listenaddr_len, int *csock, int *ssock,
                              struct addrinfo **res) {
   struct addrinfo hints;
 
@@ -106,9 +106,9 @@ bool create_local_socketpair(struct sockaddr_storage *listenaddr,
   }
 
   // Figure out the local port we got.
-  memset(listenaddr, 0, listenaddr_len);
+  memset(listenaddr, 0, *listenaddr_len);
   if (!WVPASS(!getsockname(*ssock, (struct sockaddr *)listenaddr,
-                           &listenaddr_len))) {
+                           listenaddr_len))) {
     perror("getsockname");
     return false;
   }
@@ -118,7 +118,7 @@ bool create_local_socketpair(struct sockaddr_storage *listenaddr,
              ? ntohs(((struct sockaddr_in *)listenaddr)->sin_port)
              : ntohs(((struct sockaddr_in6 *)listenaddr)->sin6_port));
 
-  *csock = create_client_socket(listenaddr, listenaddr_len, *res);
+  *csock = create_client_socket(listenaddr, *listenaddr_len, *res);
   if (*csock < 0) {
     return false;
   }
@@ -513,7 +513,7 @@ WVTEST_MAIN("Send and receive on sockets") {
   struct sockaddr_storage listenaddr;
   socklen_t listenaddr_len = sizeof(listenaddr);
   struct addrinfo *res;
-  if (!create_local_socketpair(&listenaddr, listenaddr_len, &csock, &ssock,
+  if (!create_local_socketpair(&listenaddr, &listenaddr_len, &csock, &ssock,
                                &res)) {
     return;
   }
@@ -909,7 +909,7 @@ WVTEST_MAIN("sending packets when time rolls over 32 bits") {
   struct sockaddr_storage listenaddr;
   socklen_t listenaddr_len = sizeof(listenaddr);
   struct addrinfo *res;
-  if (!create_local_socketpair(&listenaddr, listenaddr_len, &csock, &ssock,
+  if (!create_local_socketpair(&listenaddr, &listenaddr_len, &csock, &ssock,
                                &res)) {
     return;
   }
