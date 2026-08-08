@@ -10,7 +10,7 @@ CXXFLAGS+=-I$(OPENSSL_PREFIX)/include
 LDFLAGS+=-L$(OPENSSL_PREFIX)/lib
 endif
 
-PROGS=udpstress isoping isostream
+PROGS=udpstress isoping isostream isoping_test
 
 all: $(PROGS)
 
@@ -22,6 +22,12 @@ isoping: isoping.cc isoping_main.cc
 
 isostream: isostream.c
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
+
+isoping_test: isoping.cc isoping_test.cc wvtest/cpp/wvtest.cc wvtest/cpp/wvtestmain.cc
+	$(CXX) $(CXXFLAGS) -DWVTEST_CONFIGURED -Iwvtest/cpp $^ -o $@ $(LDFLAGS) -lcrypto
+
+test: isoping_test
+	./wvtest/wvtestrun ./isoping_test
 
 clean:
 	rm -f $(PROGS) *~ .*~ *.o
