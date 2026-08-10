@@ -1,7 +1,7 @@
 *~
 *.o
 *.dSYM
-isoping
-isoping_test
-isostream
-udpstress
+/isoping
+/isoping_test
+/isostream
+/udpstress
