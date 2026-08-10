@@ -207,11 +207,14 @@ func SendWaitingPackets(sessions *Sessions, conn Conn, now uint64, isServer bool
 	return nil
 }
 
-// ReadIncomingPacket reads one packet from conn and processes it, updating
-// sessions and possibly sending a reply on conn. Assumes a packet is
-// currently readable. Corresponds to read_incoming_packet() in the C
-// implementation.
-func ReadIncomingPacket(sessions *Sessions, conn Conn, now uint64, isServer bool) error {
+// RecvPacket blocks until one packet is readable on conn, and returns it
+// decoded. Callers that need an accurate receive timestamp (e.g.
+// cmd/isoping's reader goroutine) should call time.Now()-equivalent
+// (isoping.Now()) immediately after this returns, rather than before
+// calling it: RecvPacket blocks for an arbitrary amount of time waiting for
+// a packet to arrive, so a timestamp taken beforehand would describe when
+// the wait started, not when the packet actually showed up.
+func RecvPacket(conn Conn, isServer bool) (*Packet, netip.AddrPort, error) {
 	buf := make([]byte, wireSize)
 	n, rxAddr, err := recvFrom(conn, isServer, buf)
 	if err != nil {
@@ -221,25 +224,32 @@ func ReadIncomingPacket(sessions *Sessions, conn Conn, now uint64, isServer bool
 		if !errors.Is(err, net.ErrClosed) {
 			fmt.Fprintf(os.Stderr, "recvfrom: %v\n", err)
 		}
-		return err
+		return nil, netip.AddrPort{}, err
 	}
 
 	var rx Packet
 	if n != wireSize {
 		fmt.Fprintf(os.Stderr, "got invalid packet of length %d from %s\n", n, rxAddr)
-		return errInvalidPacket
+		return nil, rxAddr, errInvalidPacket
 	}
 	if err := rx.UnmarshalBinary(buf[:n]); err != nil || rx.Magic != Magic {
 		fmt.Fprintf(os.Stderr, "got invalid packet of length %d, magic=%d from %s\n", n, rx.Magic, rxAddr)
-		return errInvalidPacket
+		return nil, rxAddr, errInvalidPacket
 	}
 	switch rx.PacketType {
 	case PacketTypeHandshake, PacketTypeAck:
 	default:
 		fmt.Fprintf(os.Stderr, "received unknown packet type %d\n", rx.PacketType)
-		return errInvalidPacket
+		return nil, rxAddr, errInvalidPacket
 	}
+	return &rx, rxAddr, nil
+}
 
+// ProcessReceivedPacket looks up (or creates) the Session a just-received
+// packet belongs to and hands it off for handling, possibly sending a reply
+// on conn. now is the packet's receive timestamp, normally captured by the
+// caller right after RecvPacket returns.
+func ProcessReceivedPacket(sessions *Sessions, conn Conn, rx *Packet, rxAddr netip.AddrPort, now uint64, isServer bool) error {
 	var session *Session
 	if isServer {
 		if existing, ok := sessions.SessionMap[rxAddr]; ok {
@@ -249,7 +259,7 @@ func ReadIncomingPacket(sessions *Sessions, conn Conn, now uint64, isServer bool
 			// Reply with a new handshake packet, including a cookie; we may
 			// have dropped a legit client and need to tell it to
 			// renegotiate.
-			return sessions.sendInitialHandshakeReply(conn, &rx, rxAddr, now)
+			return sessions.sendInitialHandshakeReply(conn, rx, rxAddr, now)
 		}
 	} else {
 		existing, ok := sessions.soleSession()
@@ -259,7 +269,25 @@ func ReadIncomingPacket(sessions *Sessions, conn Conn, now uint64, isServer bool
 		}
 		session = existing
 	}
-	return handlePacket(sessions, session, &rx, conn, rxAddr, now, isServer)
+	return handlePacket(sessions, session, rx, conn, rxAddr, now, isServer)
+}
+
+// ReadIncomingPacket reads one packet from conn and processes it using now
+// as its receive timestamp, updating sessions and possibly sending a reply
+// on conn. Assumes a packet is currently readable. Corresponds to
+// read_incoming_packet() in the C implementation.
+//
+// Production callers that block waiting for a packet (as opposed to tests,
+// which call this once a packet is already known to be queued) should
+// prefer calling RecvPacket and ProcessReceivedPacket directly, capturing
+// now in between, so the timestamp reflects actual arrival time rather than
+// whenever the wait began.
+func ReadIncomingPacket(sessions *Sessions, conn Conn, now uint64, isServer bool) error {
+	rx, rxAddr, err := RecvPacket(conn, isServer)
+	if err != nil {
+		return err
+	}
+	return ProcessReceivedPacket(sessions, conn, rx, rxAddr, now, isServer)
 }
 
 // handlePacket checks what kind of packet was received and processes it

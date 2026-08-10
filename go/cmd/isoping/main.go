@@ -171,10 +171,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// A dedicated reader goroutine turns the blocking recvfrom() loop from
 	// the C implementation's single-threaded select() into a channel the
 	// main loop can select over alongside the next-send timer and signals.
+	// Now() is deliberately captured after RecvPacket returns, not before:
+	// RecvPacket blocks for an arbitrary amount of time waiting for the next
+	// packet, so timestamping beforehand would record when the wait began
+	// rather than when the packet actually arrived, corrupting the
+	// clock-skew math in HandleAckPacket.
 	readCh := make(chan error)
 	go func() {
 		for {
-			readCh <- isoping.ReadIncomingPacket(sessions, conn, isoping.Now(), isServer)
+			rx, rxAddr, err := isoping.RecvPacket(conn, isServer)
+			now := isoping.Now()
+			if err != nil {
+				readCh <- err
+				continue
+			}
+			readCh <- isoping.ProcessReceivedPacket(sessions, conn, rx, rxAddr, now, isServer)
 		}
 	}()
 
